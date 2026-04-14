@@ -1,0 +1,233 @@
+.auth-wrap {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: var(--space-5);
+}
+
+.auth-panel {
+  width: 100%;
+  max-width: 430px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  box-shadow: var(--shadow);
+}
+
+.auth-brand {
+  text-align: center;
+  margin-bottom: var(--space-5);
+}
+
+.auth-title {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: 1.6rem;
+}
+
+.auth-subtitle {
+  margin-top: var(--space-2);
+  color: var(--ink-600);
+  font-size: 0.92rem;
+}
+
+.link-btn {
+  background: transparent;
+  border: 0;
+  color: var(--nav-500);
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+}
+
+.location-box {
+  background: linear-gradient(130deg, color-mix(in srgb, var(--info) 18%, var(--card)), color-mix(in srgb, var(--safe-500) 14%, var(--card)));
+  border: 1px solid color-mix(in srgb, var(--info) 20%, var(--border));
+  border-radius: var(--radius-md);
+  padding: 0.95rem;
+}
+
+.location-title {
+  color: var(--ink-700);
+  font-size: 0.84rem;
+  margin-bottom: 0.22rem;
+}
+
+.location-value {
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+.map-full {
+  height: min(60dvh, 520px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background:
+    linear-gradient(35deg, rgba(3, 105, 161, 0.28), rgba(22, 163, 74, 0.2)),
+    repeating-linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--card) 76%, transparent) 0,
+      color-mix(in srgb, var(--card) 76%, transparent) 22px,
+      color-mix(in srgb, var(--ink-500) 13%, transparent) 22px,
+      color-mix(in srgb, var(--ink-500) 13%, transparent) 23px
+    );
+  position: relative;
+  overflow: hidden;
+}
+
+.map-full--leaflet {
+  background: color-mix(in srgb, var(--ink-900) 5%, var(--card));
+}
+
+.map-full--leaflet .map-label {
+  z-index: 500;
+}
+
+.map-canvas {
+  position: absolute;
+  inset: 0;
+}
+
+.map-label {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: color-mix(in srgb, var(--card) 80%, transparent);
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 0.74rem;
+  padding: 0.28rem 0.54rem;
+}
+
+.map-dot {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid white;
+}
+
+.map-dot.user {
+  background: var(--info);
+  left: 28%;
+  top: 65%;
+}
+
+.map-dot.center {
+  background: var(--safe-500);
+}
+
+.map-dot.zone {
+  background: var(--danger-500);
+}
+
+.route {
+  position: absolute;
+  left: 28%;
+  top: 65%;
+  width: 52%;
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--info), var(--safe-500));
+  transform: rotate(-35deg);
+  transform-origin: left center;
+}
+
+.scan-area {
+  border-radius: var(--radius-md);
+  min-height: 50dvh;
+  border: 1px solid var(--border);
+  background: linear-gradient(120deg, #0f172a, #1e293b);
+  position: relative;
+  overflow: hidden;
+}
+
+.scan-reticle {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  width: 150px;
+  height: 150px;
+  transform: translate(-50%, -50%);
+  border: 3px solid #14b8a6;
+  border-radius: 14px;
+  animation: pulse 2s infinite;
+}
+
+.scan-arrow {
+  position: absolute;
+  color: #7dd3fc;
+  font-size: 1.8rem;
+  font-weight: 800;
+}
+
+.scan-arrow.up {
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.scan-arrow.right {
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.scan-arrow.down {
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.scan-arrow.left {
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.timeline {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.timeline-item {
+  border-left: 4px solid var(--border);
+  background: color-mix(in srgb, var(--card) 90%, transparent);
+  padding: 0.8rem 0.8rem 0.8rem 0.9rem;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.timeline-item strong {
+  display: block;
+  margin-bottom: 0.3rem;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.84rem;
+}
+
+.table th,
+.table td {
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  padding: 0.56rem 0.32rem;
+}
+
+.table th {
+  color: var(--ink-600);
+  font-weight: 700;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.06);
+    opacity: 0.6;
+  }
+}

@@ -1,0 +1,57 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@600;700&display=swap');
+
+:root {
+  --font-heading: 'Space Grotesk', 'Segoe UI', sans-serif;
+  --font-body: 'Manrope', 'Segoe UI', sans-serif;
+
+  --safe-500: #16a34a;
+  --safe-700: #166534;
+  --danger-500: #dc2626;
+  --danger-700: #991b1b;
+  --nav-500: #0f766e;
+  --nav-600: #115e59;
+
+  --ink-900: #04130f;
+  --ink-700: #12312c;
+  --ink-600: #25514a;
+  --ink-500: #3f6e66;
+  --ink-100: #eef8f6;
+  --white: #ffffff;
+
+  --surface-1: #f4fbf9;
+  --surface-2: #e7f4f1;
+  --card: #ffffff;
+  --border: #c8e2dc;
+  --shadow: 0 14px 35px rgba(15, 118, 110, 0.14);
+
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+
+  --ok: var(--safe-500);
+  --warn: #f59e0b;
+  --danger: var(--danger-500);
+  --info: #0284c7;
+}
+
+body.dark {
+  --surface-1: #071915;
+  --surface-2: #0f2924;
+  --card: #102a25;
+  --border: #21443d;
+  --shadow: 0 16px 36px rgba(0, 0, 0, 0.35);
+
+  --ink-900: #ecfffa;
+  --ink-700: #b8e6dd;
+  --ink-600: #86c8bc;
+  --ink-500: #64a79b;
+  --ink-100: #e6faf4;
+}
