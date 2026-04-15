@@ -6,7 +6,8 @@ const KEYS = {
   theme: 'aegis.theme',
   data: 'aegis.data',
   sosLog: 'aegis.sosLog',
-  activity: 'aegis.activity'
+  activity: 'aegis.activity',
+  remoteUsersCount: 'aegis.remoteUsersCount'
 };
 
 const ADMIN_ACCOUNT = {
@@ -141,13 +142,82 @@ function write(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
+function parseCoordinatesFromLocation(location) {
+  const raw = String(location || '');
+  const match = raw.match(/\(([-+]?\d+(?:\.\d+)?)\s*[Nn]?,\s*([-+]?\d+(?:\.\d+)?)\s*[Ee]?\)/);
+  if (!match) {
+    return { lat: null, lng: null };
+  }
+
+  const lat = Number(match[1]);
+  const lng = Number(match[2]);
+  return {
+    lat: Number.isFinite(lat) ? lat : null,
+    lng: Number.isFinite(lng) ? lng : null
+  };
+}
+
+function normalizeSosEntry(entry) {
+  const fallbackPoint = parseCoordinatesFromLocation(entry?.location);
+  const lat = Number(entry?.lat);
+  const lng = Number(entry?.lng);
+  const at = Number(entry?.at) || Date.parse(entry?.created_at || '') || Date.now();
+
+  return {
+    name: entry?.name || 'Resident',
+    location: entry?.location || 'Location unavailable',
+    lat: Number.isFinite(lat) ? lat : fallbackPoint.lat,
+    lng: Number.isFinite(lng) ? lng : fallbackPoint.lng,
+    accuracy: Number.isFinite(Number(entry?.accuracy)) ? Number(entry?.accuracy) : null,
+    locationSource: entry?.locationSource || entry?.location_source || 'gps',
+    status: entry?.status || 'Active',
+    method: entry?.method || 'SMS',
+    message: entry?.message || '',
+    at
+  };
+}
+
+function mergeSosLogs(localRows, remoteRows) {
+  const merged = new Map();
+  const rows = [...remoteRows, ...localRows].map(normalizeSosEntry);
+
+  rows.forEach((row) => {
+    const key = `${row.at}|${row.name}|${row.method}|${row.message}`;
+    if (!merged.has(key)) {
+      merged.set(key, row);
+    }
+  });
+
+  return Array.from(merged.values())
+    .sort((a, b) => b.at - a.at)
+    .slice(0, 50);
+}
+
 export function initStorage() {
   const existingData = read(KEYS.data, null);
   write(KEYS.data, normalizeData(existingData || seedData));
   if (!read(KEYS.sosLog, null)) {
     write(KEYS.sosLog, [
-      { name: 'Juan Dela Cruz', location: 'Bagacay', status: 'Active', at: Date.now() - 1000 * 60 * 6 },
-      { name: 'Maria Santos', location: 'Rawis', status: 'Resolved', at: Date.now() - 1000 * 60 * 41 }
+      {
+        name: 'Juan Dela Cruz',
+        location: 'Bagacay, Legazpi City (13.12940 N, 123.74620 E)',
+        lat: 13.1294,
+        lng: 123.7462,
+        accuracy: 28,
+        locationSource: 'gps',
+        status: 'Active',
+        at: Date.now() - 1000 * 60 * 6
+      },
+      {
+        name: 'Maria Santos',
+        location: 'Rawis, Legazpi City (13.13640 N, 123.74290 E)',
+        lat: 13.1364,
+        lng: 123.7429,
+        accuracy: 40,
+        locationSource: 'gps',
+        status: 'Resolved',
+        at: Date.now() - 1000 * 60 * 41
+      }
     ]);
   }
   if (!read(KEYS.activity, null)) {
@@ -348,7 +418,70 @@ export function getData() {
 
 export function getSosLog() {
   const sos = read(KEYS.sosLog, []);
-  return Array.isArray(sos) ? sos : [];
+  const normalized = Array.isArray(sos) ? sos.map(normalizeSosEntry).sort((a, b) => b.at - a.at).slice(0, 50) : [];
+  write(KEYS.sosLog, normalized);
+  return normalized;
+}
+
+export async function syncSosLogFromRemote() {
+  if (!isSupabaseConfigured || !supabase || !navigator.onLine) {
+    return { synced: false };
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('sos_requests')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    if (error) {
+      return { synced: false, error };
+    }
+
+    const remoteRows = Array.isArray(data) ? data : [];
+    const localRows = getSosLog();
+    const merged = mergeSosLogs(localRows, remoteRows);
+    write(KEYS.sosLog, merged);
+
+    return { synced: true, count: merged.length };
+  } catch (error) {
+    return { synced: false, error };
+  }
+}
+
+export function getRemoteUsersCount() {
+  const value = Number(localStorage.getItem(KEYS.remoteUsersCount));
+  return Number.isFinite(value) ? value : null;
+}
+
+export async function syncUsersFromRemote() {
+  if (!isSupabaseConfigured || !supabase || !navigator.onLine) {
+    return { synced: false };
+  }
+
+  const tables = ['profiles', 'users'];
+  for (const table of tables) {
+    try {
+      const { count, error } = await supabase
+        .from(table)
+        .select('id', { count: 'exact', head: true });
+
+      if (error) {
+        continue;
+      }
+
+      const normalizedCount = Number(count);
+      if (Number.isFinite(normalizedCount)) {
+        localStorage.setItem(KEYS.remoteUsersCount, String(normalizedCount));
+        return { synced: true, count: normalizedCount, table };
+      }
+    } catch {
+      // Try next table.
+    }
+  }
+
+  return { synced: false };
 }
 
 export function getActivity() {
@@ -394,11 +527,23 @@ export function addAnnouncement({ title, body }) {
   ]);
 }
 
-export function addSOS({ name, location, method, message }) {
+export function addSOS({ name, location, lat, lng, accuracy, locationSource, method, message }) {
   const sos = getSosLog();
-  sos.unshift({ name, location, status: 'Active', method, message, at: Date.now() });
+  const hasPin = Number.isFinite(lat) && Number.isFinite(lng);
+  sos.unshift({
+    name,
+    location,
+    lat: hasPin ? lat : null,
+    lng: hasPin ? lng : null,
+    accuracy: Number.isFinite(accuracy) ? accuracy : null,
+    locationSource: locationSource || 'fallback',
+    status: 'Active',
+    method,
+    message,
+    at: Date.now()
+  });
   write(KEYS.sosLog, sos.slice(0, 50));
-  appendActivity('user', `SOS sent via ${method}`);
+  appendActivity('user', `SOS sent via ${method}${hasPin ? ` at ${lat.toFixed(5)}, ${lng.toFixed(5)}` : ''}`);
 
   void safeSupabaseInsert('sos_requests', [
     {
@@ -442,9 +587,10 @@ export function summarizeSystem() {
   const users = read(KEYS.users, []);
   const sos = getSosLog();
   const data = getData();
+  const remoteUsersCount = getRemoteUsersCount();
 
   return {
-    activeUsers: users.length,
+    activeUsers: Number.isFinite(remoteUsersCount) ? remoteUsersCount : users.length,
     recentSos: sos.filter((x) => x.status === 'Active').length,
     centers: data.centers.length,
     criticalZones: data.floodZones.filter((z) => z.level === 'High').length

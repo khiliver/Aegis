@@ -280,12 +280,20 @@ export function scanScreen() {
 }
 
 export function sosScreen(state) {
+  const point = state.userLocation;
+  const hasPin = Number.isFinite(point?.lat) && Number.isFinite(point?.lng);
+  const coordinates = hasPin
+    ? `${point.lat.toFixed(5)} N, ${point.lng.toFixed(5)} E`
+    : '--';
+  const accuracyLabel = Number.isFinite(point?.accuracy) ? `Accuracy ${Math.round(point.accuracy)}m` : 'Accuracy unavailable';
+  const sourceLabel = point?.source === 'gps' ? 'Live GPS' : 'Fallback location';
+
   return `
     <section class="screen active screen-main" data-screen="sos">
       <div>
         ${shellHeader({
           title: 'Emergency SOS',
-          subtitle: 'Send location and pre-written emergency message',
+          subtitle: 'Send pinpoint location and emergency message to admin',
           left: '<button class="icon-btn" data-nav="home" title="Back">Back</button>'
         })}
 
@@ -294,7 +302,8 @@ export function sosScreen(state) {
 
           <div class="card">
             <h3 class="card-title">Location to Share</h3>
-            <p>Bagacay, Legazpi City (14.1294 N, 123.7462 E)</p>
+            <p>Bagacay, Legazpi City (${coordinates})</p>
+            <p class="helper">${sourceLabel} | ${accuracyLabel}</p>
           </div>
 
           <form class="form" data-form="sos" novalidate>
@@ -372,6 +381,7 @@ export function guideScreen(state) {
 export function adminDashboardScreen(state) {
   const stats = state.stats;
   const style = mapStyleLabel(state.mapStyle);
+  const sosRows = state.sosLog.slice(0, 8);
 
   return `
     <section class="screen active" data-screen="admin-dashboard">
@@ -392,13 +402,48 @@ export function adminDashboardScreen(state) {
         <div class="card">
           <h3 class="card-title">Map View: Incidents and Shared Locations</h3>
           <div class="row" style="margin-bottom: 0.6rem;">
-            <p class="helper">Shared user locations and reported incidents</p>
+            <p class="helper">Shared user locations, SOS pins, and reported incidents</p>
             <button class="btn ghost" style="width: auto; padding: 0.55rem 0.8rem;" data-action="cycle-map-style">Map Style: ${style}</button>
           </div>
           <div class="map-full map-full--leaflet" style="height: 260px;">
             <div class="map-label">Style ${style} | Incident overview</div>
             <div id="admin-incident-map" class="map-canvas" role="img" aria-label="Incident map"></div>
           </div>
+        </div>
+
+        <div class="card">
+          <h3 class="card-title">Incoming SOS Alerts</h3>
+          <p class="helper">Click an SOS message to show sender pinpoint on the map.</p>
+          <table class="table">
+            <thead>
+              <tr><th>Sender</th><th>Message</th><th>Method</th><th>Location</th></tr>
+            </thead>
+            <tbody>
+              ${sosRows.length
+                ? sosRows
+                    .map((row) => {
+                      const canFocus = Number.isFinite(row.lat) && Number.isFinite(row.lng);
+                      const isSelected = state.selectedSosAt === row.at;
+                      const coords = canFocus
+                        ? `${row.lat.toFixed(5)}, ${row.lng.toFixed(5)}`
+                        : 'No coordinates';
+                      const label = row.message || 'No message';
+
+                      return `<tr>
+                        <td>${row.name}</td>
+                        <td>
+                          ${canFocus
+                            ? `<button class="link-btn" data-action="focus-sos" data-sos-at="${row.at}" title="Show pinpoint">${label}${isSelected ? ' (Selected)' : ''}</button>`
+                            : label}
+                        </td>
+                        <td>${row.method || '--'}</td>
+                        <td>${coords}</td>
+                      </tr>`;
+                    })
+                    .join('')
+                : '<tr><td colspan="4">No SOS alerts yet.</td></tr>'}
+            </tbody>
+          </table>
         </div>
 
         <div class="card">

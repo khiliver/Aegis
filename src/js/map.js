@@ -105,6 +105,19 @@ function extractCenterPoints(state) {
     }));
 }
 
+function extractSosPoints(state) {
+  return (state?.sosLog || [])
+    .filter((entry) => Number.isFinite(entry?.lat) && Number.isFinite(entry?.lng))
+    .map((entry) => ({
+      at: entry.at,
+      name: entry.name || 'Resident',
+      method: entry.method || 'SMS',
+      status: entry.status || 'Active',
+      message: entry.message || 'No message',
+      point: [entry.lat, entry.lng]
+    }));
+}
+
 function renderUserRouteMap(styleKey, state) {
   const user = extractUserPoint(state);
   const entry = ensureMap('user-route-map', user, 14);
@@ -187,24 +200,40 @@ function renderAdminIncidentMap(styleKey, state) {
   }
   entry.featureLayer.clearLayers();
 
-  const users = [
-    user,
-    [14.1288, 123.7441]
-  ];
+  const sosPins = extractSosPoints(state);
+  const users = sosPins.length
+    ? sosPins.map((pin) => pin.point)
+    : [
+        user,
+        [14.1288, 123.7441]
+      ];
   const incidents = [
     [14.1334, 123.7415],
     [14.1372, 123.7489]
   ];
   const centers = extractCenterPoints(state);
 
-  users.forEach((point) => {
-    L.circleMarker(point, {
+  users.forEach((point, index) => {
+    const sos = sosPins[index];
+    const isSelected = sos && sos.at === state?.selectedSosAt;
+    const label = sos
+      ? `SOS pin: ${sos.name} | ${sos.method} | ${sos.status}<br>${sos.message}`
+      : 'Shared user location';
+    const marker = L.circleMarker(point, {
       radius: 7,
       color: '#ffffff',
       weight: 2,
-      fillColor: '#0ea5e9',
+      fillColor: isSelected ? '#f59e0b' : '#0ea5e9',
       fillOpacity: 1
-    }).bindPopup('Shared user location').addTo(entry.featureLayer);
+    }).bindPopup(label).addTo(entry.featureLayer);
+
+    if (isSelected) {
+      if (entry.lastFocusedSosAt !== sos.at) {
+        entry.map.setView(point, 15, { animate: true });
+        entry.lastFocusedSosAt = sos.at;
+      }
+      marker.openPopup();
+    }
   });
 
   incidents.forEach((point) => {

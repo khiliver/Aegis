@@ -15,9 +15,12 @@ import {
   loginUser,
   performSyncIfOnline,
   registerUser,
+  syncSosLogFromRemote,
+  syncUsersFromRemote,
   summarizeSystem,
   toggleTheme
 } from './state.js';
+import { isSupabaseConfigured, supabase } from './supabaseClient.js';
 import { renderMaps } from './map.js';
 import {
   adminDashboardScreen,
@@ -43,6 +46,7 @@ const DEFAULT_LOCATION = {
 };
 
 let gpsWatchId = null;
+let sosRealtimeChannel = null;
 
 function getSavedMapStyle() {
   const saved = localStorage.getItem(MAP_STYLE_KEY);
@@ -85,6 +89,7 @@ const state = {
   isOnline: navigator.onLine,
   data: null,
   sosLog: [],
+  selectedSosAt: null,
   activity: [],
   stats: null
 };
@@ -262,9 +267,22 @@ function requestGpsRefresh() {
   );
 }
 
+function formatLocationForSos(point) {
+  const lat = Number(point?.lat);
+  const lng = Number(point?.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return 'Location unavailable';
+  }
+
+  return `${lat.toFixed(5)} N, ${lng.toFixed(5)} E`;
+}
+
 function refreshData() {
   state.data = getData();
   state.sosLog = getSosLog();
+  if (state.selectedSosAt !== null && !state.sosLog.some((entry) => entry.at === state.selectedSosAt)) {
+    state.selectedSosAt = null;
+  }
   state.activity = getActivity();
   state.stats = summarizeSystem();
   updateRouteRecommendation();
@@ -276,6 +294,51 @@ function syncDataSilently() {
     refreshData();
   }
   return result;
+}
+
+async function syncSosFromCloud({ showToastOnNew = false } = {}) {
+  const previousTopAt = state.sosLog[0]?.at || 0;
+  const result = await syncSosLogFromRemote();
+  if (!result?.synced) {
+    return result;
+  }
+
+  refreshData();
+  const latestAt = state.sosLog[0]?.at || 0;
+  if (showToastOnNew && latestAt > previousTopAt) {
+    showToast('New SOS received from another device.');
+  }
+
+  render();
+  return result;
+}
+
+async function syncUsersFromCloud() {
+  const result = await syncUsersFromRemote();
+  if (!result?.synced) {
+    return result;
+  }
+
+  refreshData();
+  render();
+  return result;
+}
+
+function startSosRealtimeSync() {
+  if (!isSupabaseConfigured || !supabase || sosRealtimeChannel) {
+    return;
+  }
+
+  sosRealtimeChannel = supabase
+    .channel('aegis-sos-realtime')
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'sos_requests' },
+      () => {
+        void syncSosFromCloud({ showToastOnNew: state.session?.role === 'admin' });
+      }
+    )
+    .subscribe();
 }
 
 function applyTheme() {
@@ -389,15 +452,21 @@ async function onAdminLogin(form) {
 function onSOS(form) {
   const message = String(form.get('message') || '').trim();
   const method = String(form.get('method') || 'SMS');
+  const point = state.userLocation;
+  const location = `Bagacay, Legazpi City (${formatLocationForSos(point)})`;
 
   addSOS({
     name: state.session?.name || 'Resident',
-    location: 'Bagacay, Legazpi City',
+    location,
+    lat: Number(point?.lat),
+    lng: Number(point?.lng),
+    accuracy: Number.isFinite(point?.accuracy) ? point.accuracy : null,
+    locationSource: point?.source || 'fallback',
     method,
     message
   });
 
-  showToast(`SOS sent via ${method}. Location shared.`);
+  showToast(`SOS sent via ${method}. Pinpoint location shared with admin.`);
   render();
 }
 
@@ -568,6 +637,24 @@ function initListeners() {
       return;
     }
 
+    if (action === 'focus-sos') {
+      const at = Number(actionEl.dataset.sosAt);
+      const entry = state.sosLog.find((item) => item.at === at);
+      if (!entry) {
+        showToast('SOS record not found.');
+        return;
+      }
+
+      if (!Number.isFinite(entry.lat) || !Number.isFinite(entry.lng)) {
+        showToast('This SOS does not contain coordinates.');
+        return;
+      }
+
+      state.selectedSosAt = entry.at;
+      render();
+      return;
+    }
+
     if (action === 'confirm-scan') {
       showToast('Safe zone confirmed. Guidance updated.');
       navigate('home');
@@ -577,6 +664,8 @@ function initListeners() {
   window.addEventListener('online', () => {
     state.isOnline = true;
     syncDataSilently();
+    void syncUsersFromCloud();
+    void syncSosFromCloud();
     showToast('Connection restored. Data updated.');
   });
 
@@ -610,10 +699,15 @@ function boot() {
 
   render();
   initListeners();
+  startSosRealtimeSync();
+  void syncUsersFromCloud();
+  void syncSosFromCloud();
 
   window.setInterval(() => {
     if (state.isOnline && state.session) {
       syncDataSilently();
+      void syncUsersFromCloud();
+      void syncSosFromCloud();
     }
   }, 30000);
 }
