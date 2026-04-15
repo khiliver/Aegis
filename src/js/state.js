@@ -7,7 +7,8 @@ const KEYS = {
   data: 'aegis.data',
   sosLog: 'aegis.sosLog',
   activity: 'aegis.activity',
-  remoteUsersCount: 'aegis.remoteUsersCount'
+  remoteUsersCount: 'aegis.remoteUsersCount',
+  pendingRemoteWrites: 'aegis.pendingRemoteWrites'
 };
 
 const ADMIN_ACCOUNT = {
@@ -62,6 +63,82 @@ async function safeSupabaseInsert(table, payload) {
   } catch (error) {
     return { ok: false, error };
   }
+}
+
+function getPendingRemoteWrites() {
+  const rows = read(KEYS.pendingRemoteWrites, []);
+  return Array.isArray(rows) ? rows : [];
+}
+
+function setPendingRemoteWrites(rows) {
+  write(KEYS.pendingRemoteWrites, Array.isArray(rows) ? rows : []);
+}
+
+function enqueueRemoteInsert(table, payload) {
+  const queue = getPendingRemoteWrites();
+  const items = Array.isArray(payload) ? payload : [payload];
+  const now = Date.now();
+
+  items.forEach((item) => {
+    queue.push({
+      id: `${now}-${Math.random().toString(36).slice(2)}`,
+      table,
+      payload: item,
+      queuedAt: now,
+      retries: 0
+    });
+  });
+
+  setPendingRemoteWrites(queue.slice(-200));
+}
+
+async function persistRemoteInsert(table, payload) {
+  if (!isSupabaseConfigured || !supabase) {
+    return { ok: false, queued: false };
+  }
+
+  if (!navigator.onLine) {
+    enqueueRemoteInsert(table, payload);
+    return { ok: false, queued: true };
+  }
+
+  const result = await safeSupabaseInsert(table, payload);
+  if (result.ok) {
+    return { ok: true, queued: false };
+  }
+
+  enqueueRemoteInsert(table, payload);
+  return { ok: false, queued: true, error: result.error };
+}
+
+export async function flushPendingRemoteWrites() {
+  if (!isSupabaseConfigured || !supabase || !navigator.onLine) {
+    return { flushed: false, count: 0 };
+  }
+
+  const queue = getPendingRemoteWrites();
+  if (!queue.length) {
+    return { flushed: true, count: 0 };
+  }
+
+  const remaining = [];
+  let flushedCount = 0;
+
+  for (const entry of queue) {
+    try {
+      const { error } = await supabase.from(entry.table).insert([entry.payload]);
+      if (error) {
+        remaining.push({ ...entry, retries: Number(entry.retries || 0) + 1 });
+      } else {
+        flushedCount += 1;
+      }
+    } catch {
+      remaining.push({ ...entry, retries: Number(entry.retries || 0) + 1 });
+    }
+  }
+
+  setPendingRemoteWrites(remaining.slice(-200));
+  return { flushed: remaining.length === 0, count: flushedCount, remaining: remaining.length };
 }
 
 async function upsertAccountProfile({ id, email, name, role }) {
@@ -518,7 +595,7 @@ export function addAnnouncement({ title, body }) {
   write(KEYS.data, data);
   appendActivity('admin', `Sent alert: ${title}`);
 
-  void safeSupabaseInsert('announcements', [
+  void persistRemoteInsert('announcements', [
     {
       title,
       body,
@@ -545,7 +622,7 @@ export function addSOS({ name, location, lat, lng, accuracy, locationSource, met
   write(KEYS.sosLog, sos.slice(0, 50));
   appendActivity('user', `SOS sent via ${method}${hasPin ? ` at ${lat.toFixed(5)}, ${lng.toFixed(5)}` : ''}`);
 
-  void safeSupabaseInsert('sos_requests', [
+  void persistRemoteInsert('sos_requests', [
     {
       name,
       location,
@@ -566,6 +643,8 @@ export function performSyncIfOnline() {
   if (!navigator.onLine) {
     return { synced: false };
   }
+
+  void flushPendingRemoteWrites();
 
   const data = getData();
   data.lastUpdated = Date.now();
